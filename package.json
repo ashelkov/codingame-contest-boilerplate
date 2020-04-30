@@ -1,0 +1,19 @@
+{
+  "name": "contest_boilerplate",
+  "version": "1.0.0",
+  "description": "for bundling typescript project in one file for codingame contest",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "author": "Andrey Shelkovnikov",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "rollup": "^2.7.5",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "rollup-plugin-typescript2": "^0.27.0",
+    "typescript": "^3.8.3"
+  }
+}
