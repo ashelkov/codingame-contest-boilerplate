@@ -1,5 +1,5 @@
 {
-  "name": "contest_boilerplate",
+  "name": "codeingame_crystal_rush",
   "version": "1.0.0",
   "description": "for bundling typescript project in one file for codingame contest",
   "main": "src/index.ts",
