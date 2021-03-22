@@ -32,15 +32,16 @@ class Game {
       this.turnTimestamp = Number(new Date());
       this.readTurnInputs();
 
-      // updates
+      // turn updates
       this.map.turnUpdate(this.turnData);
       this.player.turnUpdate(this.turnData);
       this.opponent.turnUpdate(this.turnData);
 
-      // analysis
-      this.player.turnAnalysis();
+      // turn analyze
+      this.map.turnAnalyze();
+      this.player.turnAnalyze();
 
-      // output
+      // turn output
       this.writeTurnOutput();
 
       console.error(`turn ${this.turn}, ${Date.now() - this.turnTimestamp}ms`);
@@ -113,30 +114,29 @@ class Game {
   }
 
   writeTurnOutput() {
-    const { robots } = this.player;
-    this.writeDebugData();
-    robots.forEach(({ target, command }, index) => {
-      if (target && command) {
-        console.log(
-          `${command} ${target.x} ${target.y} ${command} ${target.x} ${target.y}`
-        );
-      } else if (command) {
-        console.log(`${command} ${command}`);
+    this.debugger();
+
+    this.player.robots.forEach(({ command }) => {
+      if (command) {
+        console.log(command + ' ' + command);
       } else {
-        console.log('WAIT WAIT');
+        console.log('WAIT');
       }
     });
   }
 
-  writeDebugData() {
-    const { vienCells, map } = this.map;
+  debugger() {
+    const { flatMap } = this.map;
     const { radars, traps } = this.player;
 
+    const viens = flatMap.filter((_) => _.vien);
+    const safeViens = this.map.getSafeVienCells();
+
     console.error({
-      v: vienCells.length,
-      r: radars.length,
-      t: traps.length,
-      d: vienCells.filter(({ x, y }) => map[y][x].trapped).length,
+      ra: radars.length,
+      tr: traps.length,
+      vi: viens.length,
+      un: viens.length - safeViens.length,
     });
   }
 }

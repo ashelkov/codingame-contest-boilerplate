@@ -1,17 +1,18 @@
 import { ITurnData } from './Game';
 
 class Map {
-  map: IMapCell[][];
-  radarGrid: IRadarCell[];
   width: number;
   height: number;
-  vienCells: IMapCell[];
+  map: IMapCell[][];
+  flatMap: IMapCell[];
+  radarGrid: IRadarCell[];
+  justDrilled: IMapCell[];
 
   constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
     this.map = [];
-    this.vienCells = [];
+    this.flatMap = [];
     this.initialize();
     this.initializeRadarGrid();
   }
@@ -25,33 +26,15 @@ class Map {
           hole: false,
           x: j,
           y: i,
+          vien: false,
+          trap: false,
+          radar: false,
+          safe: true,
         });
       }
       this.map.push(row);
+      this.flatMap.push(...row);
     }
-  }
-
-  turnUpdate(turnData: ITurnData) {
-    const vienCells = [];
-
-    for (let i = 0; i < this.height; i++) {
-      for (let j = 0; j < this.width; j++) {
-        const { ore, hole } = turnData.map[i][j];
-        this.map[i][j].hole = Boolean(hole);
-        this.map[i][j].ore = ore === '?' ? '?' : +ore;
-        if (ore !== '?' && ore !== '0') {
-          vienCells.push(this.map[i][j]);
-        }
-      }
-    }
-
-    this.vienCells = vienCells.sort((a, b) => a.x - b.x);
-
-    // update radar grid
-    const radars = turnData.entities.filter(({ type }) => type === 2);
-    this.radarGrid.forEach((cell) => {
-      cell.radar = !!radars.find(({ x, y }) => cell.x === x && cell.y === y);
-    });
   }
 
   initializeRadarGrid() {
@@ -73,12 +56,56 @@ class Map {
     ];
   }
 
-  getNextRadarPosition() {
-    return this.radarGrid.filter((_) => !_.radar)[0];
+  turnUpdate(turnData: ITurnData) {
+    this.justDrilled = [];
+
+    for (let i = 0; i < this.height; i++) {
+      for (let j = 0; j < this.width; j++) {
+        const { ore, hole } = turnData.map[i][j];
+
+        if (Boolean(hole) && !this.map[i][j].hole) {
+          this.justDrilled.push(this.map[i][j]);
+        }
+
+        this.map[i][j].hole = Boolean(hole);
+        this.map[i][j].ore = ore === '?' ? '?' : +ore;
+        this.map[i][j].vien = ore !== '?' && ore !== '0';
+        this.map[i][j].radar = false;
+        this.map[i][j].trap = false;
+      }
+    }
+
+    turnData.entities
+      .filter(({ type }) => type === 2) // updata radars
+      .forEach(({ x, y }) => {
+        this.map[y][x].radar = true;
+      });
+
+    turnData.entities
+      .filter(({ type }) => type === 3) // updata traps
+      .forEach(({ x, y }) => {
+        this.map[y][x].trap = true;
+      });
+  }
+
+  turnAnalyze() {
+    this.updateRadarGrid();
+  }
+
+  getNextRadarPlace(): IRadarCell {
+    return this.radarGrid.filter(({ x, y }) => {
+      const { radar, trap, safe } = this.map[y][x];
+      return !(radar || trap || !safe);
+    })[0];
+  }
+
+  getSafeVienCells(): IMapCell[] {
+    return this.flatMap
+      .filter(({ vien, safe, trap }) => vien && safe && !trap)
+      .sort((a, b) => a.x - b.x);
   }
 
   handleTrapPlacement(pos: { x: number; y: number }) {
-    // todo: check just created holes first
     const { x, y } = pos;
     [
       { x, y },
@@ -89,29 +116,48 @@ class Map {
     ].forEach(({ x, y }) => {
       if (x < 0 || x > 29 || y < 0 || y > 14) return;
       if (this.map[y][x].hole) {
-        this.map[y][x].trapped = true;
-        console.error('MARK TRAPPED CELL', x, y);
+        this.map[y][x].safe = false;
       }
     });
   }
 
-  getSafeVienCell() {
-    return this.vienCells.filter(({ x, y }) => !this.map[y][x].trapped)[0];
+  updateRadarGrid() {
+    this.radarGrid = this.radarGrid.map(({ x, y }) => {
+      const { radar, safe, trap } = this.map[y][x];
+      const isNeedAdjustement = !radar && (!safe || trap);
+      if (isNeedAdjustement) {
+        const adjusted = this.flatMap
+          .filter((_) => Math.abs(_.x - x) === 1 && Math.abs(_.y - y) === 1)
+          .filter((_) => !_.radar && _.safe && !_.trap && _.x !== 0)[0];
+        if (adjusted) {
+          console.error(
+            `adjust radar ${x} ${y} -> ${adjusted.x} ${adjusted.y}`
+          );
+          return {
+            x: adjusted.x,
+            y: adjusted.y,
+          };
+        }
+      }
+      return { x, y };
+    });
   }
 }
 
 export default Map;
 
-interface IMapCell {
+export interface IMapCell {
   ore: number | '?';
   hole: boolean;
   x: number;
   y: number;
-  trapped?: boolean;
+  vien: boolean;
+  trap: boolean;
+  radar: boolean;
+  safe: boolean;
 }
 
 interface IRadarCell {
   x: number;
   y: number;
-  radar?: boolean;
 }

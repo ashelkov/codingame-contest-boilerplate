@@ -32,7 +32,6 @@ class Opponent {
             }
             if (x > 0 && robot.carry) {
               robot.carry = false;
-              console.error('ENEMY ITEM DROPPED');
               this.map.handleTrapPlacement(robot);
             }
           }
