@@ -1,12 +1,18 @@
 import { ITurnData } from './Game';
+import { IRobot } from './Player';
+import { IEnemyRobot } from './Opponent';
+import { getNeighbourPositions } from '../utils/map.utils';
 
 class Map {
+  turn: number;
   width: number;
   height: number;
   map: IMapCell[][];
   flatMap: IMapCell[];
-  radarGrid: IRadarCell[];
-  justDrilled: IMapCell[];
+  radarGrid: IPosition[];
+  exploreGrid: IPosition[];
+  safeViens: IMapCell[];
+  richViens: IMapCell[];
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -15,6 +21,7 @@ class Map {
     this.flatMap = [];
     this.initialize();
     this.initializeRadarGrid();
+    this.initializeExploreGrid();
   }
 
   initialize() {
@@ -22,26 +29,36 @@ class Map {
       const row: IMapCell[] = [];
       for (let j = 0; j < this.width; j++) {
         row.push({
-          ore: '?',
-          hole: false,
+          ore: 0,
+          hole: 0,
           x: j,
           y: i,
-          vien: false,
+          visible: false,
+          unsafe: false,
           trap: false,
           radar: false,
-          safe: true,
+          targeted: false,
+          myBots: [],
+          enemyBots: [],
+          next: [],
         });
       }
       this.map.push(row);
       this.flatMap.push(...row);
     }
+
+    // add neighbours
+    this.flatMap.forEach((cell) => {
+      const positions = getNeighbourPositions(cell);
+      cell.next = positions.map(({ x, y }) => this.map[y][x]);
+    });
   }
 
   initializeRadarGrid() {
     this.radarGrid = [
       { x: 5, y: 5 },
-      { x: 14, y: 4 },
       { x: 10, y: 9 },
+      { x: 14, y: 4 },
       { x: 19, y: 8 },
       { x: 1, y: 10 },
       { x: 6, y: 14 },
@@ -56,22 +73,34 @@ class Map {
     ];
   }
 
+  initializeExploreGrid() {
+    this.exploreGrid = [];
+    for (let y = 3; y <= 11; y += 2) {
+      for (let x = 5; x <= 23; x += 2) {
+        this.exploreGrid.push({ x, y });
+      }
+    }
+  }
+
   turnUpdate(turnData: ITurnData) {
-    this.justDrilled = [];
+    this.turn = turnData.turn;
 
     for (let i = 0; i < this.height; i++) {
       for (let j = 0; j < this.width; j++) {
         const { ore, hole } = turnData.map[i][j];
 
-        if (Boolean(hole) && !this.map[i][j].hole) {
-          this.justDrilled.push(this.map[i][j]);
+        if (Boolean(hole) === !this.map[i][j].hole) {
+          this.map[i][j].hole = this.turn;
         }
 
-        this.map[i][j].hole = Boolean(hole);
-        this.map[i][j].ore = ore === '?' ? '?' : +ore;
-        this.map[i][j].vien = ore !== '?' && ore !== '0';
+        this.map[i][j].ore = ore === '?' ? 0 : +ore;
         this.map[i][j].radar = false;
         this.map[i][j].trap = false;
+        this.map[i][j].visible = ore !== '?';
+        this.map[i][j].targeted = false;
+
+        this.map[i][j].myBots = [];
+        this.map[i][j].enemyBots = [];
       }
     }
 
@@ -86,23 +115,29 @@ class Map {
       .forEach(({ x, y }) => {
         this.map[y][x].trap = true;
       });
+
+    this.updateComputedValues();
+  }
+
+  updateComputedValues() {
+    this.safeViens = this.flatMap
+      .filter(({ ore, unsafe, trap }) => ore > 0 && !unsafe && !trap)
+      .sort((a, b) => a.x - b.x);
+
+    this.richViens = this.safeViens
+      .filter(({ ore }) => ore > 2)
+      .sort((a, b) => +b.ore - +b.ore);
   }
 
   turnAnalyze() {
     this.updateRadarGrid();
   }
 
-  getNextRadarPlace(): IRadarCell {
+  getNextRadarPlace(): IPosition {
     return this.radarGrid.filter(({ x, y }) => {
-      const { radar, trap, safe } = this.map[y][x];
-      return !(radar || trap || !safe);
+      const { radar, trap, unsafe } = this.map[y][x];
+      return !(radar || trap || unsafe);
     })[0];
-  }
-
-  getSafeVienCells(): IMapCell[] {
-    return this.flatMap
-      .filter(({ vien, safe, trap }) => vien && safe && !trap)
-      .sort((a, b) => a.x - b.x);
   }
 
   handleTrapPlacement(pos: { x: number; y: number }) {
@@ -116,27 +151,23 @@ class Map {
     ].forEach(({ x, y }) => {
       if (x < 0 || x > 29 || y < 0 || y > 14) return;
       if (this.map[y][x].hole) {
-        this.map[y][x].safe = false;
+        this.map[y][x].unsafe = true;
       }
     });
   }
 
   updateRadarGrid() {
     this.radarGrid = this.radarGrid.map(({ x, y }) => {
-      const { radar, safe, trap } = this.map[y][x];
-      const isNeedAdjustement = !radar && (!safe || trap);
+      const { radar, unsafe, trap } = this.map[y][x];
+      const isNeedAdjustement = !radar && (unsafe || trap);
+
       if (isNeedAdjustement) {
-        const adjusted = this.flatMap
+        const adj = this.flatMap
           .filter((_) => Math.abs(_.x - x) === 1 && Math.abs(_.y - y) === 1)
-          .filter((_) => !_.radar && _.safe && !_.trap && _.x !== 0)[0];
-        if (adjusted) {
-          console.error(
-            `adjust radar ${x} ${y} -> ${adjusted.x} ${adjusted.y}`
-          );
-          return {
-            x: adjusted.x,
-            y: adjusted.y,
-          };
+          .filter((_) => !_.radar && !_.unsafe && !_.trap && _.x !== 0)[0];
+        if (adj) {
+          console.error(`ADJUST RADAR ${x} ${y} -> ${adj.x} ${adj.y}`);
+          return { x: adj.x, y: adj.y };
         }
       }
       return { x, y };
@@ -147,17 +178,21 @@ class Map {
 export default Map;
 
 export interface IMapCell {
-  ore: number | '?';
-  hole: boolean;
+  ore: number;
+  hole: number;
   x: number;
   y: number;
-  vien: boolean;
+  unsafe: boolean;
+  visible: boolean;
   trap: boolean;
   radar: boolean;
-  safe: boolean;
+  targeted: boolean;
+  myBots: IRobot[];
+  enemyBots: IEnemyRobot[];
+  next: IMapCell[];
 }
 
-interface IRadarCell {
+export interface IPosition {
   x: number;
   y: number;
 }

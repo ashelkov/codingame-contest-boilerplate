@@ -19,6 +19,7 @@ class Opponent {
       .filter(({ type }) => type === 1) // update robots
       .forEach(({ id, x, y, item }) => {
         const robot = this.robots.find((_) => _.id === id);
+        const isHome = x === 0;
         if (robot) {
           robot.item = item;
           robot.isDead = x === -1 && y === -1;
@@ -27,12 +28,11 @@ class Opponent {
           robot.x = x;
           robot.y = y;
           if (robot.notMoved) {
-            if (x === 0) {
-              robot.carry = true;
-            }
-            if (x > 0 && robot.carry) {
+            if (robot.carry) {
               robot.carry = false;
               this.map.handleTrapPlacement(robot);
+            } else {
+              robot.carry = isHome;
             }
           }
         } else {
@@ -47,11 +47,19 @@ class Opponent {
           });
         }
       });
+
+    this.robots.forEach((robot) => {
+      const { x, y, isDead } = robot;
+      const { map } = this.map;
+      if (!isDead) {
+        map[y][x].enemyBots.push(robot);
+      }
+    });
   }
 }
 
 export default Opponent;
 
-interface IEnemyRobot extends IRobot {
+export interface IEnemyRobot extends IRobot {
   carry?: boolean;
 }

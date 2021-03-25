@@ -30,6 +30,7 @@ class Game {
   start() {
     while (true) {
       this.turnTimestamp = Number(new Date());
+      this.turn++;
       this.readTurnInputs();
 
       // turn updates
@@ -42,10 +43,10 @@ class Game {
       this.player.turnAnalyze();
 
       // turn output
+      this.debugger();
       this.writeTurnOutput();
 
       console.error(`turn ${this.turn}, ${Date.now() - this.turnTimestamp}ms`);
-      this.turn++;
     }
   }
 
@@ -104,6 +105,7 @@ class Game {
     }
 
     this.turnData = {
+      turn: this.turn,
       myScore,
       opponentScore,
       map,
@@ -114,8 +116,6 @@ class Game {
   }
 
   writeTurnOutput() {
-    this.debugger();
-
     this.player.robots.forEach(({ command }) => {
       if (command) {
         console.log(command + ' ' + command);
@@ -129,8 +129,8 @@ class Game {
     const { flatMap } = this.map;
     const { radars, traps } = this.player;
 
-    const viens = flatMap.filter((_) => _.vien);
-    const safeViens = this.map.getSafeVienCells();
+    const viens = flatMap.filter((_) => _.ore > 0);
+    const safeViens = this.map.safeViens;
 
     console.error({
       ra: radars.length,
@@ -149,6 +149,7 @@ export interface IInitData {
 }
 
 export interface ITurnData {
+  turn: number;
   myScore: number;
   opponentScore: number;
   map: { ore: string; hole: number }[][];
