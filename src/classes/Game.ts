@@ -126,18 +126,11 @@ class Game {
   }
 
   debugger() {
-    const { flatMap } = this.map;
-    const { radars, traps } = this.player;
+    const { visibleOreCount, safeOreCount, map } = this.map;
+    const { unsafeTriggersCount } = this.player;
 
-    const viens = flatMap.filter((_) => _.ore > 0);
-    const safeViens = this.map.safeViens;
-
-    console.error({
-      ra: radars.length,
-      tr: traps.length,
-      vi: viens.length,
-      un: viens.length - safeViens.length,
-    });
+    console.error(`ore: ${safeOreCount}/${visibleOreCount}`);
+    console.error(`unsafe triggers: ${unsafeTriggersCount}`);
   }
 }
 

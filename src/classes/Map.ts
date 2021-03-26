@@ -11,8 +11,9 @@ class Map {
   flatMap: IMapCell[];
   radarGrid: IPosition[];
   exploreGrid: IPosition[];
-  safeViens: IMapCell[];
-  richViens: IMapCell[];
+
+  visibleOreCount: number;
+  safeOreCount: number;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -116,17 +117,17 @@ class Map {
         this.map[y][x].trap = true;
       });
 
-    this.updateComputedValues();
+    this.updateCounters();
   }
 
-  updateComputedValues() {
-    this.safeViens = this.flatMap
-      .filter(({ ore, unsafe, trap }) => ore > 0 && !unsafe && !trap)
-      .sort((a, b) => a.x - b.x);
+  updateCounters() {
+    this.visibleOreCount = this.flatMap
+      .filter(({ ore }) => ore > 0)
+      .reduce((sum, cell) => (sum += cell.ore), 0);
 
-    this.richViens = this.safeViens
-      .filter(({ ore }) => ore > 2)
-      .sort((a, b) => +b.ore - +b.ore);
+    this.safeOreCount = this.flatMap
+      .filter(({ ore, unsafe }) => ore > 0 && !unsafe)
+      .reduce((sum, cell) => (sum += cell.ore), 0);
   }
 
   turnAnalyze() {
@@ -140,19 +141,13 @@ class Map {
     })[0];
   }
 
-  handleTrapPlacement(pos: { x: number; y: number }) {
-    const { x, y } = pos;
-    [
-      { x, y },
-      { x: x + 1, y },
-      { x: x - 1, y },
-      { x, y: y + 1 },
-      { x, y: y - 1 },
-    ].forEach(({ x, y }) => {
-      if (x < 0 || x > 29 || y < 0 || y > 14) return;
-      if (this.map[y][x].hole) {
-        this.map[y][x].unsafe = true;
-      }
+  handleTrapPlacement({ x, y }: IPosition) {
+    const around = [this.map[y][x], ...this.map[y][x].next];
+    const aroundHoles = around.filter((_) => _.hole);
+    const aroundHolesNew = aroundHoles.filter((_) => _.hole === this.turn);
+    const updateUnsafe = aroundHolesNew.length ? aroundHolesNew : aroundHoles;
+    updateUnsafe.forEach((cell) => {
+      cell.unsafe = !cell.radar && !cell.trap;
     });
   }
 

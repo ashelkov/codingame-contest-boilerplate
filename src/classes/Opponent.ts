@@ -19,22 +19,15 @@ class Opponent {
       .filter(({ type }) => type === 1) // update robots
       .forEach(({ id, x, y, item }) => {
         const robot = this.robots.find((_) => _.id === id);
-        const isHome = x === 0;
+
         if (robot) {
+          if (robot.isDead) return;
           robot.item = item;
           robot.isDead = x === -1 && y === -1;
           robot.path.push({ x, y });
           robot.notMoved = robot.x === x && robot.y === y;
           robot.x = x;
           robot.y = y;
-          if (robot.notMoved) {
-            if (robot.carry) {
-              robot.carry = false;
-              this.map.handleTrapPlacement(robot);
-            } else {
-              robot.carry = isHome;
-            }
-          }
         } else {
           this.robots.push({
             id,
@@ -53,6 +46,23 @@ class Opponent {
       const { map } = this.map;
       if (!isDead) {
         map[y][x].enemyBots.push(robot);
+      }
+    });
+
+    this.analyzeEnemyBots();
+  }
+
+  analyzeEnemyBots() {
+    this.robots.forEach((robot) => {
+      const isHome = robot.x === 0;
+
+      if (robot.notMoved) {
+        if (robot.carry) {
+          this.map.handleTrapPlacement(robot);
+          robot.carry = isHome;
+        } else {
+          robot.carry = isHome;
+        }
       }
     });
   }

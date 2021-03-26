@@ -5,6 +5,7 @@ import { getDistance, isNeighbours } from '../utils/map.utils';
 
 class Player {
   score: number;
+  opponentScore: number;
   trapCooldown: number;
   radarCooldown: number;
   turn: number;
@@ -14,15 +15,26 @@ class Player {
   traps: IEntity[];
   map: Map;
 
+  unsafeTriggersCount: number;
+
   constructor() {
     this.robots = [];
     this.radars = [];
     this.traps = [];
+    this.unsafeTriggersCount = 0;
   }
 
   turnUpdate(turnData: ITurnData) {
-    const { myScore, entities, radarCooldown, trapCooldown, turn } = turnData;
+    const {
+      myScore,
+      opponentScore,
+      entities,
+      radarCooldown,
+      trapCooldown,
+      turn,
+    } = turnData;
     this.score = myScore;
+    this.opponentScore = opponentScore;
     this.radarCooldown = radarCooldown;
     this.trapCooldown = trapCooldown;
     this.turn = turn;
@@ -93,10 +105,19 @@ class Player {
 
     // complete or abort current orders
     this.robots.forEach((robot) => {
+      if (robot.isDead) return;
       if (this.isOrderCompleted(robot) || this.isOrderNotActual(robot)) {
         robot.order = null;
         robot.target = null;
         robot.command = '';
+      }
+      this.forceUnsafeTrigger(robot);
+    });
+
+    // update targeted cells
+    this.robots.forEach(({ target }) => {
+      if (target) {
+        this.map.map[target.y][target.x].targeted = true;
       }
     });
 
@@ -104,6 +125,10 @@ class Player {
     this.robots.forEach((robot) => {
       if (!robot.order && !robot.isDead) {
         this.assignNewOrder(robot);
+        if (robot.target) {
+          const { x, y } = robot.target;
+          this.map.map[y][x].targeted = true;
+        }
       }
     });
   }
@@ -120,11 +145,13 @@ class Player {
   }
 
   isOrderCompleted(robot: IRobot) {
-    const { item, order } = robot;
+    const { map } = this.map;
+    const { item, order, target, notMoved } = robot;
+    const isCarryCrystal = item === 4;
 
     // is crystal mined
     if (order === Order.MINE_ORE) {
-      return item === 4;
+      return isCarryCrystal;
     }
     // is returned home
     if (order === Order.RETURN_HOME) {
@@ -150,6 +177,16 @@ class Player {
     if (order === Order.WAIT) {
       return true;
     }
+    // is triggered unsafe
+    if (order === Order.TRIGGER_UNSAFE) {
+      const triggered = isNeighbours(target, robot) && notMoved;
+      const { x, y } = target;
+      if (triggered) {
+        map[y][x].unsafe = false;
+        map[y][x].ore += Number(isCarryCrystal);
+      }
+      return triggered;
+    }
   }
 
   isOrderNotActual(robot: IRobot) {
@@ -173,6 +210,44 @@ class Player {
     }
   }
 
+  forceUnsafeTrigger(robot: IRobot) {
+    const { map } = this.map;
+    const { x, y, item } = robot;
+    const isEmpty = item === -1;
+
+    [map[y][x], ...map[y][x].next]
+      .filter((_) => _.unsafe)
+      .forEach((cell) => {
+        let enemyBotsCount = 0;
+        let myBotsCount = 0;
+        [cell, ...cell.next].forEach((_) => {
+          enemyBotsCount += _.enemyBots.length;
+          myBotsCount += _.myBots.length;
+        });
+
+        const isVisibleOre = cell.visible && cell.ore > 0;
+        const canKillMoreEnemies = enemyBotsCount - myBotsCount > 0;
+        const canKillSameEnemies = enemyBotsCount - myBotsCount === 0;
+        const myScoreIsHigher = this.score > this.opponentScore;
+        const shouldTriggerUnsafe =
+          canKillMoreEnemies ||
+          (canKillSameEnemies &&
+            (myScoreIsHigher || (isEmpty && isVisibleOre)));
+
+        if (shouldTriggerUnsafe) {
+          robot.order = Order.TRIGGER_UNSAFE;
+          robot.target = cell;
+          robot.command = `DIG ${cell.x} ${cell.y}`;
+        }
+      });
+
+    if (robot.order === Order.TRIGGER_UNSAFE) {
+      const { x, y } = robot.target;
+      this.unsafeTriggersCount++;
+      console.error(`TRIGGER UNSAFE ${this.unsafeTriggersCount}`, { x, y });
+    }
+  }
+
   assignNewOrder(robot: IRobot) {
     const { map } = this.map;
     const { item } = robot;
@@ -185,13 +260,6 @@ class Player {
 
     const nextRadar = this.map.getNextRadarPlace();
     const nextOreCell: IPosition = this.getNextOreCell(robot);
-
-    // update targeted cells
-    this.robots.forEach(({ target }) => {
-      if (target) {
-        this.map.map[target.y][target.x].targeted = true;
-      }
-    });
 
     if (isHome && isEmpty) {
       if (!this.radarCooldown && nextRadar) {
@@ -213,7 +281,8 @@ class Player {
     }
 
     if (isCarryRadar) {
-      const target = nextRadar || nextOreCell;
+      const { safeOreCount } = this.map;
+      const target = safeOreCount > 25 ? nextOreCell : nextRadar || nextOreCell;
       if (target) {
         const { x, y } = target;
         robot.order = Order.PLACE_RADAR;
@@ -264,8 +333,8 @@ class Player {
   }
 
   forceRadarRequest(nextRadar: IPosition): boolean {
-    const safeViens = this.map.safeViens;
-    const needRadar = nextRadar && safeViens.length < 10;
+    const { safeOreCount } = this.map;
+    const needRadar = nextRadar && safeOreCount < 10;
     const radarRequested = this.robots.some(
       ({ order, item, x }) =>
         order === Order.REQUEST_RADAR ||
@@ -301,6 +370,10 @@ class Player {
           a.hole - b.hole ||
           b.ore - a.ore
       );
+    if (nextOre[0] && nextOre[0].x === 14 && nextOre[0].y === 3) {
+      console.error('cell', nextOre[0]);
+      console.error('robot.id', robot.id);
+    }
     return nextOre[0];
   }
 
@@ -347,5 +420,6 @@ enum Order {
   REQUEST_TRAP,
   PLACE_RADAR,
   PLACE_TRAP,
+  TRIGGER_UNSAFE,
   WAIT,
 }

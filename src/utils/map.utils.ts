@@ -1,6 +1,6 @@
 export function isNeighbours(pos1: IPosition, pos2: IPosition) {
   if (!pos1 || !pos2) return false;
-  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) === 1;
+  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) <= 1;
 }
 
 export function getNeighbourPositions({ x, y }: IPosition) {
